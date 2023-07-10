@@ -21,7 +21,7 @@ class DatasetAttr:
         self.response_column = "output"
         self.history_column = None
 
-
+#===========一些模型参数,给model用来配置.一些域.
 @dataclass
 class ModelArguments:
     """
@@ -58,7 +58,7 @@ class ModelArguments:
     use_auth_token: Optional[bool] = field(
         default=False,
         metadata={"help": "Will use the token generated when running `huggingface-cli login`."}
-    )
+    ) #用来等于hf账号.
     quantization_bit: Optional[int] = field(
         default=None,
         metadata={"help": "The number of bits to quantize the model."}
@@ -95,7 +95,7 @@ class ModelArguments:
     def __post_init__(self):
         if self.use_v2 and self.model_name_or_path == "THUDM/chatglm-6b":
             self.model_name_or_path = "THUDM/chatglm2-6b"
-
+        #======后初始化, 进行chatglm2的适配.这样弄保证旧代码可以继续运行.
         if self.checkpoint_dir is not None: # support merging lora weights
             self.checkpoint_dir = [cd.strip() for cd in self.checkpoint_dir.split(",")]
 

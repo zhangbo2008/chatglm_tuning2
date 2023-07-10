@@ -1,4 +1,4 @@
-import os
+import os        # 工具里面通用的部分.
 import sys
 import torch
 import hashlib
@@ -60,9 +60,9 @@ logger = get_logger(__name__)
 
 
 def init_adapter(
-        model: PreTrainedModel,
-        model_args: ModelArguments,
-        finetuning_args: FinetuningArguments,
+        model: PreTrainedModel,   #模型.
+        model_args: ModelArguments,  # 模型的一些配置参数.
+        finetuning_args: FinetuningArguments,# 输入4种输入模式.
         is_trainable: bool
 ) -> PreTrainedModel:
     r"""
@@ -73,21 +73,21 @@ def init_adapter(
     Note that the trainable parameters must be cast to float32.
     """
 
-    if finetuning_args.finetuning_type == "none" and is_trainable:
+    if finetuning_args.finetuning_type == "none" and is_trainable: # 训练的话, finetune模式一定要选一个.
         raise ValueError("You cannot use finetuning_type=none while training.")
 
     if finetuning_args.finetuning_type == "full":
         logger.info("Fine-tuning method: Full")
-        model = model.float()
+        model = model.float() # 参数都float化.
 
     if finetuning_args.finetuning_type == "freeze":
         logger.info("Fine-tuning method: Freeze")
 
         for name, param in model.named_parameters():
-            if not any(trainable_layer in name for trainable_layer in finetuning_args.trainable_layers):
+            if not any(trainable_layer in name for trainable_layer in finetuning_args.trainable_layers): # 如果参数的名字name不包含训练层中的任何一个,那么不就是说他应该被锁定,所以我们梯度false.
                 param.requires_grad_(False)
             else:
-                param.data = param.data.to(torch.float32)
+                param.data = param.data.to(torch.float32)  # 否则就是要训练.训练的话我们都f32化. 从这里也看出来非float的是不能训练的. 训练只支持小数模式.
 
         if model_args.checkpoint_dir is not None:
             assert load_trainable_params(model, model_args.checkpoint_dir[0]), "Model checkpoint is not correctly loaded."

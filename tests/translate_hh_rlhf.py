@@ -1,5 +1,5 @@
 # coding=utf-8
-
+#=======这个翻译代码跑不通, 可能跟谷歌api有关.
 import os
 import json
 import time

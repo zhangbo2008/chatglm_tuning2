@@ -1,4 +1,10 @@
 
+
+
+pip install git+https://github.com/lvwerra/trl/
+
+
+
 data是一些数据集;里面都已经用代码或者已经刷好了chatglm需求的格式.
 examples是一些上层调用demo
 src里面是核心函数.
