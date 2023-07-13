@@ -24,10 +24,10 @@ from .other import (
 
 logger = get_logger(__name__)
 
-
+#=替换模型, 一种是默认ml模型, 一种是奖励模型.
 def replace_model(model: AutoModelForCausalLMWithValueHead, target: Literal["default", "reward"]) -> None:
     if target == "reward": # save default head temporarily
-        valuehead_state_dict = model.v_head.state_dict()
+        valuehead_state_dict = model.v_head.state_dict() #替换默认的参数.
         setattr(model, "default_head_weight", valuehead_state_dict["summary.weight"])
         setattr(model, "default_head_bias", valuehead_state_dict["summary.bias"])
 
@@ -47,7 +47,7 @@ def cast_layernorm_dtype(
     layer_norm_state_dict = {}
 
     for name, param in model.named_parameters():
-        if param.ndim == 1 and any(layer_norm_name in name for layer_norm_name in layer_norm_names):
+        if param.ndim == 1 and any(layer_norm_name in name for layer_norm_name in layer_norm_names): # 如果参数中带有layernorm的字样. 那么我们把layernorm_par中的值给付过去,如果没有就写到返回字典里面.
             if layer_norm_params is not None:
                 param.data = layer_norm_params[name] # restore float32 weights
             else:
@@ -56,7 +56,7 @@ def cast_layernorm_dtype(
 
     return model, layer_norm_state_dict
 
-
+#继承trl库包的ppotrainer
 class PPOTrainerForChatGLM(PPOTrainer, PeftTrainer):
     r"""
     Inherits PPOTrainer.
@@ -131,13 +131,13 @@ class PPOTrainerForChatGLM(PPOTrainer, PeftTrainer):
 
                 # Get response from ChatGLM
                 query_tensors: torch.Tensor = batch["input_ids"]
-                response_tensors = self.generate(batch, length_sampler=output_length_sampler, return_prompt=False, **gen_kwargs)
+                response_tensors = self.generate(batch, length_sampler=output_length_sampler, return_prompt=False, **gen_kwargs) # 只返回结果.
 
                 queries: List[torch.Tensor] = []
                 responses: List[torch.Tensor] = []
                 for i in range(len(query_tensors)):
-                    query_length = (query_tensors[i] != self.tokenizer.pad_token_id).nonzero()[0]
-                    response_length = (response_tensors[i] != self.tokenizer.pad_token_id).nonzero()[-1] + 1
+                    query_length = (query_tensors[i] != self.tokenizer.pad_token_id).nonzero()[0] # 因为padding在右边.
+                    response_length = (response_tensors[i] != self.tokenizer.pad_token_id).nonzero()[-1] + 1 # paddign在右边.
                     queries.append(query_tensors[i, query_length:]) # remove padding from left
                     if response_length < 2: # make response have at least 2 tokens
                         responses.append(response_tensors.new_empty(2).fill_(self.tokenizer.eos_token_id))
@@ -153,7 +153,7 @@ class PPOTrainerForChatGLM(PPOTrainer, PeftTrainer):
                 # Run PPO step
                 unwrapped_model.gradient_checkpointing_enable()
                 unwrapped_model.config.use_cache = False
-
+                #==========调用trl库step函数来训练.
                 stats = self.step(queries, responses, rewards)
 
                 loss_meter.update(stats["ppo/loss/total"], n=len(rewards))
@@ -180,7 +180,7 @@ class PPOTrainerForChatGLM(PPOTrainer, PeftTrainer):
             if (step+1) % self.args.save_steps == 0: # save checkpoint
                 self.save_model(os.path.join(self.args.output_dir, f"checkpoint-{step+1}"))
 
-    @torch.no_grad()
+    @torch.no_grad() # 生成答案.
     def generate(
             self,
             inputs: Dict[str, torch.Tensor],

@@ -58,7 +58,7 @@ require_version("trl>=0.4.4", "To fix: pip install trl>=0.4.4")
 
 logger = get_logger(__name__)
 
-
+#模型进行peft化
 def init_adapter(
         model: PreTrainedModel,   #模型.
         model_args: ModelArguments,  # 模型的一些配置参数.
@@ -82,37 +82,37 @@ def init_adapter(
 
     if finetuning_args.finetuning_type == "freeze":
         logger.info("Fine-tuning method: Freeze")
-
+        #先锁参数.
         for name, param in model.named_parameters():
             if not any(trainable_layer in name for trainable_layer in finetuning_args.trainable_layers): # 如果参数的名字name不包含训练层中的任何一个,那么不就是说他应该被锁定,所以我们梯度false.
                 param.requires_grad_(False)
             else:
                 param.data = param.data.to(torch.float32)  # 否则就是要训练.训练的话我们都f32化. 从这里也看出来非float的是不能训练的. 训练只支持小数模式.
-
+        #加载参数.
         if model_args.checkpoint_dir is not None:
-            assert load_trainable_params(model, model_args.checkpoint_dir[0]), "Model checkpoint is not correctly loaded."
+            assert load_trainable_params(model, model_args.checkpoint_dir[0]), "Model checkpoint is not correctly loaded." # 进行模型加载.
 
     if finetuning_args.finetuning_type == "p_tuning":
         logger.info("Fine-tuning method: P-Tuning v2")
 
         if model_args.checkpoint_dir is not None:
-            assert load_trainable_params(model, model_args.checkpoint_dir[0]), "Model checkpoint is not correctly loaded."
+            assert load_trainable_params(model, model_args.checkpoint_dir[0]), "Model checkpoint is not correctly loaded." # ptuning也是先加载全部参数.
 
     if finetuning_args.finetuning_type == "lora":
         logger.info("Fine-tuning method: LoRA")
         lastest_checkpoint = None
 
-        if model_args.checkpoint_dir is not None:
+        if model_args.checkpoint_dir is not None: # 如果已经存在checkpoint
             assert os.path.exists(os.path.join(model_args.checkpoint_dir[0], WEIGHTS_NAME)), \
                 "Provided path ({}) does not contain a LoRA weight.".format(model_args.checkpoint_dir[0])
             assert os.path.exists(os.path.join(model_args.checkpoint_dir[0], CONFIG_NAME)), \
                 "The given checkpoint may be not a LoRA checkpoint, please specify `--finetuning_type full/p_tuning/freeze` instead."
-
+#lora也需要有config
             if is_trainable and model_args.resume_lora_training: # continually train on the lora weights
                 checkpoints_to_merge, lastest_checkpoint = model_args.checkpoint_dir[:-1], model_args.checkpoint_dir[-1]
             else:
                 checkpoints_to_merge = model_args.checkpoint_dir
-
+            #模型peft化.
             for checkpoint in checkpoints_to_merge:
                 model = PeftModel.from_pretrained(model, checkpoint)
                 model = model.merge_and_unload()
@@ -146,7 +146,7 @@ def load_pretrained(
         is_trainable: Optional[bool] = False,
         stage: Optional[Literal["sft", "rm", "ppo"]] = "sft"
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
-    r"""
+    r"""  # stage是三个阶段,  是instruct gpt论文中的图中的三个stage. 第一个是sft,第二个是rm 第三个是ppo.
     Loads pretrained model and tokenizer.
 
     Support both training and inference.
@@ -154,7 +154,7 @@ def load_pretrained(
     if (not is_trainable) and model_args.checkpoint_dir is None:
         logger.warning("Checkpoint is not found at evaluation, load the original model.")
         finetuning_args = FinetuningArguments(finetuning_type="none")
-
+    # 后2种stage只能用lora. 因为不是lm模型.
     assert stage == "sft" or finetuning_args.finetuning_type == "lora", \
         "RM and PPO training can only be performed with LoRA method."
 
@@ -168,7 +168,7 @@ def load_pretrained(
             else:
                 quantization = "bnb" # use bnb's quantization
         else:
-            quantization = "cpm"
+            quantization = "cpm"     # 量化方法: cpm 和bnb  后续看看如何实现.
 
     config_kwargs = {
         "trust_remote_code": True,
@@ -195,7 +195,7 @@ def load_pretrained(
         config.prefix_projection = finetuning_args.prefix_projection
 
     # Quantization configurations for Full, Freeze and LoRA in training (using bitsandbytes library).
-    if quantization == "bnb":
+    if quantization == "bnb":#使用bitsandbytes模式量化.
         if model_args.quantization_bit == 8:
             require_version("bitsandbytes>=0.37.0", "To fix: pip install bitsandbytes>=0.37.0")
             config_kwargs["load_in_8bit"] = True
@@ -233,7 +233,7 @@ def load_pretrained(
     if hasattr(config, "auto_map") and "AutoModel" in config.auto_map:
         model.__class__.register_for_auto_class()
 
-    if model_args.use_v2:
+    if model_args.use_v2: # 使用v2版本.
         assert tokenizer.eos_token_id is not None, "Please update the *.json and *.py files of ChatGLM2-6B from HuggingFace."
         model.lm_head = model.transformer.output_layer
         output_embedding_base_layer = model.transformer
@@ -252,7 +252,7 @@ def load_pretrained(
     ) if is_trainable else model
     model = init_adapter(model, model_args, finetuning_args, is_trainable)
 
-    if not is_trainable:
+    if not is_trainable:#非训练模式.
         model.requires_grad_(False) # fix all model params
         model = model.half() # cast all params to float16 for inference
 
@@ -262,19 +262,20 @@ def load_pretrained(
         if is_trainable: # convert all params into half precision except prefix_encoder in training
             for name, param in model.named_parameters():
                 if "prefix_encoder" not in name:
-                    param.data = param.data.to(torch.float16)
+                    param.data = param.data.to(torch.float16) # 非训练的部分都设置为f16.
 
         model.quantize(model_args.quantization_bit) # built-in method in ChatGLM-6B, also an in-place operation
 
     if quantization is not None:
         logger.info("Quantized model to {} bit.".format(model_args.quantization_bit))
-
+    # 非lm模型.加一个value头.
     if stage == "rm" or stage == "ppo": # add value head
         model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
 
-        if stage == "rm" and model_args.checkpoint_dir is not None: # load valuehead weights to evaluate reward model
+        if stage == "rm" and model_args.checkpoint_dir is not None: # load valuehead weights to evaluate reward model # 读取旧的权重.
             logger.warning("Only the last checkpoint containing valuehead will be loaded as the valuehead.")
             if load_valuehead_params(model, model_args.checkpoint_dir[-1]):
+                #如果导入模型成功.
                 model.v_head.load_state_dict({
                     "summary.weight": getattr(model, "reward_head_weight"),
                     "summary.bias": getattr(model, "reward_head_bias")
@@ -291,7 +292,7 @@ def load_pretrained(
 
     return model, tokenizer
 
-
+#返回配置参数.
 def prepare_args(
         stage: Literal["sft", "rm", "ppo"]
 ) -> Tuple[ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, FinetuningArguments]:
@@ -366,7 +367,7 @@ def prepare_args(
 
     return model_args, data_args, training_args, finetuning_args
 
-
+# 返回推理参数.
 def prepare_infer_args() -> Tuple[ModelArguments, FinetuningArguments, GeneratingArguments]:
 
     parser = HfArgumentParser((ModelArguments, FinetuningArguments, GeneratingArguments))
@@ -381,13 +382,13 @@ def prepare_infer_args() -> Tuple[ModelArguments, FinetuningArguments, Generatin
 
     return model_args, finetuning_args, generating_args
 
-
+#返回数据集.
 def prepare_data(
         model_args: ModelArguments,
         data_args: DataTrainingArguments
 ) -> Dataset:
 
-    def checksum(file_path, hash):
+    def checksum(file_path, hash):# 哈希验证文件完整性.
         with open(file_path, "rb") as datafile:
             binary_data = datafile.read()
         sha1 = hashlib.sha1(binary_data).hexdigest()
@@ -512,8 +513,8 @@ def preprocess_data(
                 target_ids = target_ids[:data_args.max_target_length - 1]
 
             context_length = len(source_ids) + 2 # gmask and sop tokens
-            input_ids = tokenizer.build_inputs_with_special_tokens(source_ids, target_ids)
-            labels = [IGNORE_INDEX] * context_length + input_ids[context_length:]
+            input_ids = tokenizer.build_inputs_with_special_tokens(source_ids, target_ids) # 添加special token.
+            labels = [IGNORE_INDEX] * context_length + input_ids[context_length:] # 因为输入部分不需要算loss, 所以labels里面填入 context_length个-100, 后面再加入laebles的id.   所以最后input_ids跟labels最后是等长的.
 
             model_inputs["input_ids"].append(input_ids)
             model_inputs["labels"].append(labels)
@@ -539,6 +540,8 @@ def preprocess_data(
             model_inputs["labels"].append(labels)
         return model_inputs
 
+
+    # 处理一个正负回答的数据集.
     def preprocess_pairwise_dataset(examples):
         # v1: build input pairs with format `X [gMASK] <sop> Y1 <eop>` and `X [gMASK] <sop> Y2 <eop>`
         # v2: build input pairs with format `[gMASK] sop X Y1 </s>` and `[gMASK] sop X Y2 </s>`
@@ -561,7 +564,7 @@ def preprocess_data(
             model_inputs["accept_ids"].append(accept_ids)
             model_inputs["reject_ids"].append(reject_ids)
         return model_inputs
-
+#自监督数据集打印内容.
     def print_sft_dataset_example(example):
         print("input_ids:\n{}".format(example["input_ids"]))
         print("inputs:\n{}".format(tokenizer.decode(example["input_ids"], skip_special_tokens=False)))

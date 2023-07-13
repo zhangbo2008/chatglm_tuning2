@@ -102,7 +102,7 @@ class ModelArguments:
         if self.quantization_bit is not None:
             assert self.quantization_bit in [4, 8], "We only accept 4-bit or 8-bit quantization."
 
-
+#训练参数
 @dataclass
 class DataTrainingArguments:
     """
@@ -111,7 +111,7 @@ class DataTrainingArguments:
     dataset: Optional[str] = field(
         default="alpaca_zh",
         metadata={"help": "The name of provided dataset(s) to use. Use comma to separate multiple datasets."}
-    )
+    ) # 数据集
     dataset_dir: Optional[str] = field(
         default="data",
         metadata={"help": "The name of the folder containing datasets."}
@@ -234,10 +234,10 @@ class FinetuningArguments:
             self.lora_target = [target.strip() for target in self.lora_target.split(",")] # support custom target modules of LoRA
 
         if self.num_layer_trainable > 0: # fine-tuning the last n layers if num_layer_trainable > 0
-            trainable_layer_ids = [27 - k for k in range(self.num_layer_trainable)]
+            trainable_layer_ids = [27 - k for k in range(self.num_layer_trainable)] # 一共27层,我们选后几层.
         else: # fine-tuning the first n layers if num_layer_trainable < 0
             trainable_layer_ids = [k for k in range(-self.num_layer_trainable)]
-
+        #然后再根据模式来把上面层中的layer抽出来.
         if self.name_module_trainable == "mlp":
             self.trainable_layers = ["layers.{:d}.mlp".format(idx) for idx in trainable_layer_ids]
         elif self.name_module_trainable == "qkv":
@@ -258,7 +258,7 @@ class FinetuningArguments:
             text = f.read()
         return cls(**json.loads(text))
 
-
+#=推理参数.
 @dataclass
 class GeneratingArguments:
     """

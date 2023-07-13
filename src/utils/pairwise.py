@@ -28,7 +28,7 @@ class PairwiseDataCollatorForChatGLM(DataCollatorForChatGLM):
         We generate 2 * n examples where the first n examples represent chosen examples and
         the last n examples represent rejected examples.
         """
-        features = [{"input_ids": feature[key]} for key in ("accept_ids", "reject_ids") for feature in features]
+        features = [{"input_ids": feature[key]} for key in ("accept_ids", "reject_ids") for feature in features] # 最后数据为 真真真假假假这种.
         return super().__call__(features)
 
 
@@ -53,8 +53,8 @@ class PairwiseTrainerForChatGLM(PeftTrainer):
 
         See: https://github.com/huggingface/transformers/blob/v4.30.2/src/transformers/trainer.py#L3509
         """
-        batch_size = inputs["input_ids"].size(0) // 2
+        batch_size = inputs["input_ids"].size(0) // 2     # 因为是pair数据,所以这里除2.
         _, _, values = model(**inputs)
         r_accept, r_reject = values[-1].split(batch_size, dim=0)
-        loss = -torch.log(torch.sigmoid(r_accept - r_reject)).mean()
+        loss = -torch.log(torch.sigmoid(r_accept - r_reject)).mean() #让差后sigmoid越大越好即可.
         return (loss, [loss, r_accept, r_reject]) if return_outputs else loss

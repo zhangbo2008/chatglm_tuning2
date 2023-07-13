@@ -57,7 +57,7 @@ class InvalidScoreLogitsProcessor(LogitsProcessor):
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         if torch.isnan(scores).any() or torch.isinf(scores).any():
-            scores.zero_()
+            scores.zero_() # 如果出现nan和inf的情况.就清空.
             scores[..., 5] = 5e4
         return scores
 
@@ -67,7 +67,7 @@ def get_logits_processor() -> LogitsProcessorList:
     logits_processor.append(InvalidScoreLogitsProcessor())
     return logits_processor
 
-
+#训练模型,之前的一些对model预处理
 # Includes: (1) cast the layernorm in fp32 (2) make output embedding layer require grads (3) upcast the lm_head to fp32
 # Inspired by: https://github.com/huggingface/peft/blob/c0209c35abbf88c63aa267800d98a8e212ed0a42/src/peft/utils/other.py#L35
 def prepare_model_for_training(
@@ -97,7 +97,7 @@ def prepare_model_for_training(
             def forward(self, x: torch.Tensor) -> torch.Tensor:
                 return super().forward(x.to(input_dtype)).to(torch.float32)
 
-        setattr(output_embedding_base_layer, output_embedding_layer_name, CastOutputToFloat(output_embedding_layer))
+        setattr(output_embedding_base_layer, output_embedding_layer_name, CastOutputToFloat(output_embedding_layer))#设置模型输出为float32.
 
     return model
 
@@ -115,7 +115,7 @@ def print_trainable_params(model: torch.nn.Module) -> None:
     print("trainable params: {:d} || all params: {:d} || trainable%: {:.4f}".format(
                 trainable_params, all_param, 100 * trainable_params / all_param))
 
-
+#=====返回可训练参数的字典.
 def get_state_dict(model: torch.nn.Module) -> Dict[str, torch.Tensor]: # get state dict containing trainable parameters
     state_dict = model.state_dict()
     filtered_state_dict = {}
@@ -129,10 +129,10 @@ def get_state_dict(model: torch.nn.Module) -> Dict[str, torch.Tensor]: # get sta
 
 def load_trainable_params(model: torch.nn.Module, checkpoint_dir: os.PathLike) -> bool:
     weights_file = os.path.join(checkpoint_dir, WEIGHTS_NAME)
-    if os.path.exists(weights_file):
+    if os.path.exists(weights_file):  # 如果是整个文件的存储.
         model_state_dict = torch.load(weights_file, map_location="cpu")
         model.load_state_dict(model_state_dict, strict=False) # skip missing keys
-    elif os.path.exists(os.path.join(checkpoint_dir, WEIGHTS_INDEX_NAME)):
+    elif os.path.exists(os.path.join(checkpoint_dir, WEIGHTS_INDEX_NAME)): # 如果是分片模式的存储
         load_sharded_checkpoint(model, checkpoint_dir, strict=False)
     else:
         logger.warning("Provided path ({}) does not contain pre-trained weights.".format(checkpoint_dir))
@@ -146,7 +146,7 @@ def load_valuehead_params(model: torch.nn.Module, checkpoint_dir: os.PathLike) -
         logger.warning("Provided path ({}) does not contain valuehead weights.".format(checkpoint_dir))
         return False
     valuehead_state_dict = torch.load(valuehead_file, map_location="cpu")
-    model.register_buffer("reward_head_weight", valuehead_state_dict["summary.weight"])
+    model.register_buffer("reward_head_weight", valuehead_state_dict["summary.weight"])      # 需要学的参数, 注册进model
     model.register_buffer("reward_head_bias", valuehead_state_dict["summary.bias"])
     model.register_buffer("default_head_weight", torch.zeros_like(valuehead_state_dict["summary.weight"]))
     model.register_buffer("default_head_bias", torch.zeros_like(valuehead_state_dict["summary.bias"]))
