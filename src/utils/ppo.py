@@ -153,7 +153,7 @@ class PPOTrainerForChatGLM(PPOTrainer, PeftTrainer):
                 # Run PPO step
                 unwrapped_model.gradient_checkpointing_enable()
                 unwrapped_model.config.use_cache = False
-                #==========调用trl库step函数来训练.
+                #==========调用trl库step函数来训练. 提供queries, responses, rewards 给trl即可.
                 stats = self.step(queries, responses, rewards)
 
                 loss_meter.update(stats["ppo/loss/total"], n=len(rewards))
